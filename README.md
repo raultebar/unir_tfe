@@ -1,2 +1,2 @@
-# unir_tfe
-Template for deploy SOC services in a Zero-Trust architecture design
+# Trabajo final de estudios
+Plantilla para implementar servicios SOC de código abierto en un diseño de arquitectura Zero-Trust.

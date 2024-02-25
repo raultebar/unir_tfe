@@ -1,0 +1,747 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Template for deploy SOC services in a Zero-Trust Architecture design
+
+Mappings:
+  RegionMap:
+    eu-west-1:
+      AMI: ami-013898da85dead62b
+
+Parameters:
+  VpcCIDR:
+    Type: String
+    Description: CIDR block for VPC
+    Default: 172.16.0.0/16
+
+  PublicSubnetAccCIDR:
+    Type: String
+    Description: CIDR block for public subnet A
+    Default: 172.16.0.0/28
+
+  PublicSubnetMgmCIDR:
+    Type: String
+    Description: CIDR block for public subnet A
+    Default: 172.16.0.16/28
+
+  PrivateSubnetOpsCIDR:
+    Type: String
+    Description: CIDR block for private subnet Operations
+    Default: 172.16.0.32/28
+
+  PrivateSubnetOrcCIDR:
+    Type: String
+    Description: CIDR block for private subnet Orchestration
+    Default: 172.16.0.48/28
+
+  PrivateSubnetScaCIDR:
+    Type: String
+    Description: CIDR block for private subnet Scanners
+    Default: 172.16.0.64/28
+
+  PrivateSubnetSanCIDR:
+    Type: String
+    Description: CIDR block for private subnet Sandbox
+    Default: 172.16.0.80/28
+
+  PrivateSubnetIntCIDR:
+    Type: String
+    Description: CIDR block for private subnet Intelligence
+    Default: 172.16.0.96/28
+
+  PrivateSubnetDBCIDR:
+    Type: String
+    Description: CIDR block for private subnet Database
+    Default: 172.16.0.112/28
+
+  NatGateway:
+    Type: String
+    Description: Nat Gateway for allow internet access to private networks
+    Default: true
+    AllowedValues:
+      - true
+      - false
+
+  InstanceType:
+    Description: EC2 instance type
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - t3.micro
+
+Resources:
+  Vpc:
+    Type: "AWS::EC2::VPC"
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsHostnames: true
+      Tags:
+        - Key: "Name"
+          Value: "SOC VPC"
+
+  InternetGateway:
+    Type: "AWS::EC2::InternetGateway"
+
+  VpcIGatewayAttachment:
+    Type: "AWS::EC2::VPCGatewayAttachment"
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref Vpc
+
+  PublicSubnetAcc:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs
+          Ref: "AWS::Region" 
+      CidrBlock: !Ref PublicSubnetAccCIDR
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref Vpc
+
+  PublicSubnetMgm:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs
+          Ref: "AWS::Region" 
+      CidrBlock: !Ref PublicSubnetMgmCIDR
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref Vpc
+
+  PrivateSubnetOps:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs
+          Ref: "AWS::Region" 
+      CidrBlock: !Ref PrivateSubnetOpsCIDR
+      VpcId: !Ref Vpc
+
+  PrivateSubnetOrc:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs
+          Ref: "AWS::Region" 
+      CidrBlock: !Ref PrivateSubnetOrcCIDR
+      VpcId: !Ref Vpc
+
+  PrivateSubnetSca:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs
+          Ref: "AWS::Region" 
+      CidrBlock: !Ref PrivateSubnetScaCIDR
+      VpcId: !Ref Vpc
+
+  PrivateSubnetSan:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs
+          Ref: "AWS::Region" 
+      CidrBlock: !Ref PrivateSubnetSanCIDR
+      VpcId: !Ref Vpc
+
+  PrivateSubnetInt:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs
+          Ref: "AWS::Region" 
+      CidrBlock: !Ref PrivateSubnetIntCIDR
+      VpcId: !Ref Vpc
+
+  PrivateSubnetDB:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs
+          Ref: "AWS::Region" 
+      CidrBlock: !Ref PrivateSubnetDBCIDR
+      VpcId: !Ref Vpc
+
+  PublicSubnetAccRouteTable:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref RouteTablePublic
+      SubnetId: !Ref PublicSubnetAcc
+
+  PublicSubnetMgmRouteTable:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref RouteTablePublic
+      SubnetId: !Ref PublicSubnetMgm
+
+  PrivateSubnetOpsRouteTable:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate
+      SubnetId: !Ref PrivateSubnetOps
+
+  PrivateSubnetOrcRouteTable:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate
+      SubnetId: !Ref PrivateSubnetOrc
+
+  PrivateSubnetScaRouteTable:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate
+      SubnetId: !Ref PrivateSubnetSca
+
+  PrivateSubnetSanRouteTable:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate
+      SubnetId: !Ref PrivateSubnetSan
+
+  PrivateSubnetIntRouteTable:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate
+      SubnetId: !Ref PrivateSubnetInt
+
+  PrivateSubnetDBRouteTable:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate
+      SubnetId: !Ref PrivateSubnetDB
+
+  RouteDefaultPublic:
+    Type: "AWS::EC2::Route"
+    DependsOn: VpcIGatewayAttachment
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref RouteTablePublic
+  
+  ElasticIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  PublicNatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt ElasticIP.AllocationId
+      SubnetId: !Ref PublicSubnetAcc
+
+  RouteNatGateway:
+    Type: AWS::EC2::Route
+    DependsOn: PublicNatGateway
+    Properties:
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref PublicNatGateway
+      RouteTableId: !Ref RouteTablePrivate
+      
+  RouteTablePublic:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref Vpc
+  
+  RouteTablePrivate:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref Vpc
+
+  InstanceConnectEndpoint:
+    Type: AWS::EC2::InstanceConnectEndpoint
+    Properties:
+      SubnetId: !Ref PublicSubnetMgm
+      SecurityGroupIds:
+        - !Ref eiceSecurityGroup
+      
+  eiceSecurityGroup:
+    Type:  AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Firewall exceptions
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - CidrIp: 172.16.0.0/24
+          Description: Allow all outbound traffic
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+      Tags:
+        - Key: Name
+          Value: TheHive Security Group
+
+  TheHiveEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      SubnetId: !Ref PrivateSubnetOps
+      SecurityGroupIds:
+        - !GetAtt TheHiveSecurityGroup.GroupId
+      ImageId: !FindInMap
+        - RegionMap
+        - !Ref AWS::Region
+        - AMI
+      InstanceType: !Ref InstanceType
+      UserData:
+        'Fn::Base64':
+          !Sub |
+            #!/bin/bash
+            yum update -y
+      Tags:
+        - Key: Name
+          Value: TheHive
+        - Key: Account ID
+          Value: !Ref AWS::AccountId
+        - Key: AMI
+          Value: !FindInMap
+            - RegionMap
+            - !Ref AWS::Region
+            - AMI
+
+  TheHiveSecurityGroup:
+    Type:  AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Firewall exceptions
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - ALBSecurityGroup
+            - GroupId
+          Description: TheHive Port With ALB
+          IpProtocol: tcp
+          FromPort: 9000
+          ToPort: 9000
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - eiceSecurityGroup
+            - GroupId
+          Description: TheHive Port With ALB
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+          IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+      Tags:
+        - Key: Name
+          Value: TheHive Security Group
+
+  CortexEC2Instance:
+      Type: AWS::EC2::Instance
+      Properties:
+        SubnetId: !Ref PrivateSubnetOrc
+        SecurityGroupIds:
+          - !GetAtt CortexSecurityGroup.GroupId
+        ImageId: !FindInMap
+          - RegionMap
+          - !Ref AWS::Region
+          - AMI
+        InstanceType: !Ref InstanceType
+        UserData:
+          'Fn::Base64':
+            !Sub |
+              #!/bin/bash
+              yum update -y
+        Tags:
+          - Key: Name
+            Value: Cortex
+          - Key: Account ID
+            Value: !Ref AWS::AccountId
+          - Key: AMI
+            Value: !FindInMap
+              - RegionMap
+              - !Ref AWS::Region
+              - AMI
+
+  CortexSecurityGroup:
+    Type:  AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Firewall exceptions
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - TheHiveSecurityGroup
+            - GroupId
+          Description: Cortex Port With TheHive
+          IpProtocol: tcp
+          FromPort: 9001
+          ToPort: 9001
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - eiceSecurityGroup
+            - GroupId
+          Description: TheHive Port With ALB
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+          IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+      Tags:
+        - Key: Name
+          Value: Cortex Security Group
+
+  PatrowlEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      SubnetId: !Ref PrivateSubnetSca
+      SecurityGroupIds:
+        - !GetAtt PatrowlSecurityGroup.GroupId
+      ImageId: !FindInMap
+        - RegionMap
+        - !Ref AWS::Region
+        - AMI
+      InstanceType: !Ref InstanceType
+      UserData:
+        'Fn::Base64':
+          !Sub |
+            #!/bin/bash
+            yum update -y
+      Tags:
+        - Key: Name
+          Value: Patrowl
+        - Key: Account ID
+          Value: !Ref AWS::AccountId
+        - Key: AMI
+          Value: !FindInMap
+            - RegionMap
+            - !Ref AWS::Region
+            - AMI
+
+  PatrowlSecurityGroup:
+    Type:  AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Firewall exceptions
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - ALBSecurityGroup
+            - GroupId
+          Description: Patrowl Port With ALB
+          IpProtocol: tcp
+          FromPort: 8083
+          ToPort: 8083
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - TheHiveSecurityGroup
+            - GroupId
+          Description: Patrowl Port With TheHive
+          IpProtocol: tcp
+          FromPort: 8083
+          ToPort: 8083
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - eiceSecurityGroup
+            - GroupId
+          Description: TheHive Port With ALB
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+          IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+      Tags:
+        - Key: Name
+          Value: Patrowl Security Group
+
+  CuckooEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      SubnetId: !Ref PrivateSubnetSan
+      SecurityGroupIds:
+        - !GetAtt CuckooSecurityGroup.GroupId
+      ImageId: !FindInMap
+        - RegionMap
+        - !Ref AWS::Region
+        - AMI
+      InstanceType: !Ref InstanceType
+      UserData:
+        'Fn::Base64':
+          !Sub |
+            #!/bin/bash
+            yum update -y
+      Tags:
+        - Key: Name
+          Value: Cuckoo
+        - Key: Account ID
+          Value: !Ref AWS::AccountId
+        - Key: AMI
+          Value: !FindInMap
+            - RegionMap
+            - !Ref AWS::Region
+            - AMI
+
+  CuckooSecurityGroup:
+    Type:  AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Firewall exceptions
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - CortexSecurityGroup
+            - GroupId
+          Description: Cuckoo Port With Cortex
+          IpProtocol: tcp
+          FromPort: 8001
+          ToPort: 8001
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - eiceSecurityGroup
+            - GroupId
+          Description: TheHive Port With ALB
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+          IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+      Tags:
+        - Key: Name
+          Value: Cuckoo Security Group
+
+  MispEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      SubnetId: !Ref PrivateSubnetInt
+      SecurityGroupIds:
+        - !GetAtt MispSecurityGroup.GroupId
+      ImageId: !FindInMap
+        - RegionMap
+        - !Ref AWS::Region
+        - AMI
+      InstanceType: !Ref InstanceType
+      UserData:
+        'Fn::Base64':
+          !Sub |
+            #!/bin/bash
+            yum update -y
+      Tags:
+        - Key: Name
+          Value: Misp
+        - Key: Account ID
+          Value: !Ref AWS::AccountId
+        - Key: AMI
+          Value: !FindInMap
+            - RegionMap
+            - !Ref AWS::Region
+            - AMI
+
+  MispSecurityGroup:
+    Type:  AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Firewall exceptions
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - CortexSecurityGroup
+            - GroupId
+          Description: Misp Port With TheHive
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - TheHiveSecurityGroup
+            - GroupId
+          Description: Misp Port With Cortex
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - eiceSecurityGroup
+            - GroupId
+          Description: TheHive Port With ALB
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+          IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+      Tags:
+        - Key: Name
+          Value: Misp Security Group
+
+  DBEC2Instance:
+      Type: AWS::EC2::Instance
+      Properties:
+        SubnetId: !Ref PrivateSubnetDB
+        SecurityGroupIds:
+          - !GetAtt DBSecurityGroup.GroupId
+        ImageId: !FindInMap
+          - RegionMap
+          - !Ref AWS::Region
+          - AMI
+        InstanceType: !Ref InstanceType
+        UserData:
+          'Fn::Base64':
+            !Sub |
+              #!/bin/bash
+              yum update -y
+        Tags:
+          - Key: Name
+            Value: ElasticSearch
+          - Key: Account ID
+            Value: !Ref AWS::AccountId
+          - Key: AMI
+            Value: !FindInMap
+              - RegionMap
+              - !Ref AWS::Region
+              - AMI
+
+  DBSecurityGroup:
+    Type:  AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Firewall exceptions
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - TheHiveSecurityGroup
+            - GroupId
+          Description: ElasticSearch Port With TheHive
+          IpProtocol: tcp
+          FromPort: 9200
+          ToPort: 9200
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - CortexSecurityGroup
+            - GroupId
+          Description: ElasticSearch Port With Cortex
+          IpProtocol: tcp
+          FromPort: 9200
+          ToPort: 9200
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - eiceSecurityGroup
+            - GroupId
+          Description: TheHive Port With ALB
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+          IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+      Tags:
+        - Key: Name
+          Value: ElasticSearch Security Group
+
+  ALBSecurityGroup:
+    Type:  AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Firewall exceptions
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          Description: ALB Port TheHive
+          IpProtocol: tcp
+          FromPort: 9000
+          ToPort: 9000
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+          IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+      Tags:
+        - Key: Name
+          Value: ALB Security Group
+
+  EC2TargetGroupTheHive:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 15
+      HealthyThresholdCount: 5
+      Matcher:
+        HttpCode: '200'
+      Name: EC2TargetGroupTheHive
+      Port: 9000
+      Protocol: HTTP
+      TargetGroupAttributes:
+      - Key: deregistration_delay.timeout_seconds
+        Value: '20'
+      UnhealthyThresholdCount: 3
+      VpcId: !Ref Vpc
+
+  EC2TargetGroupPatrowl:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 15
+      HealthyThresholdCount: 5
+      Matcher:
+        HttpCode: '200'
+      Name: EC2TargetGroupPatrowl
+      Port: 8083
+      Protocol: HTTP
+      TargetGroupAttributes:
+      - Key: deregistration_delay.timeout_seconds
+        Value: '20'
+      UnhealthyThresholdCount: 3
+      VpcId: !Ref Vpc
+
+  ALBListenerThehive:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref EC2TargetGroupTheHive
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 9000
+      Protocol: HTTP
+
+  ALBListenerPatrowl:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref EC2TargetGroupPatrowl
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 8083
+      Protocol: HTTP
+
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      Subnets:
+      - !Ref PublicSubnetAcc
+      - !Ref PublicSubnetMgm
+      SecurityGroups:
+        - !GetAtt ALBSecurityGroup.GroupId
+
+Outputs:
+  ALBDNSName:
+    Description: ALB DNS name
+    Value: !GetAtt ApplicationLoadBalancer.DNSName

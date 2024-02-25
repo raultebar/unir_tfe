@@ -69,6 +69,7 @@ Parameters:
       - t3.micro
 
 Resources:
+  # VPC definition
   Vpc:
     Type: "AWS::EC2::VPC"
     Properties:
@@ -78,6 +79,7 @@ Resources:
         - Key: "Name"
           Value: "SOC VPC"
 
+  # Internet access definition
   InternetGateway:
     Type: "AWS::EC2::InternetGateway"
 
@@ -87,6 +89,35 @@ Resources:
       InternetGatewayId: !Ref InternetGateway
       VpcId: !Ref Vpc
 
+  ElasticIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  PublicNatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt ElasticIP.AllocationId
+      SubnetId: !Ref PublicSubnetAcc
+
+  InstanceConnectEndpoint:
+    Type: AWS::EC2::InstanceConnectEndpoint
+    Properties:
+      SubnetId: !Ref PublicSubnetMgm
+      SecurityGroupIds:
+        - !Ref eiceSecurityGroup
+
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      Subnets:
+      - !Ref PublicSubnetAcc
+      - !Ref PublicSubnetMgm
+      SecurityGroups:
+        - !GetAtt ALBSecurityGroup.GroupId
+
+  # Subnets definition
   PublicSubnetAcc:
     Type: "AWS::EC2::Subnet"
     Properties:
@@ -169,6 +200,17 @@ Resources:
       CidrBlock: !Ref PrivateSubnetDBCIDR
       VpcId: !Ref Vpc
 
+  # Routing tables definition
+  RouteTablePublic:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref Vpc
+  
+  RouteTablePrivate:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref Vpc
+
   PublicSubnetAccRouteTable:
     Type: "AWS::EC2::SubnetRouteTableAssociation"
     Properties:
@@ -224,17 +266,6 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
       RouteTableId: !Ref RouteTablePublic
-  
-  ElasticIP:
-    Type: AWS::EC2::EIP
-    Properties:
-      Domain: vpc
-
-  PublicNatGateway:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId: !GetAtt ElasticIP.AllocationId
-      SubnetId: !Ref PublicSubnetAcc
 
   RouteNatGateway:
     Type: AWS::EC2::Route
@@ -243,39 +274,8 @@ Resources:
       DestinationCidrBlock: '0.0.0.0/0'
       NatGatewayId: !Ref PublicNatGateway
       RouteTableId: !Ref RouteTablePrivate
-      
-  RouteTablePublic:
-    Type: "AWS::EC2::RouteTable"
-    Properties:
-      VpcId: !Ref Vpc
   
-  RouteTablePrivate:
-    Type: "AWS::EC2::RouteTable"
-    Properties:
-      VpcId: !Ref Vpc
-
-  InstanceConnectEndpoint:
-    Type: AWS::EC2::InstanceConnectEndpoint
-    Properties:
-      SubnetId: !Ref PublicSubnetMgm
-      SecurityGroupIds:
-        - !Ref eiceSecurityGroup
-      
-  eiceSecurityGroup:
-    Type:  AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Firewall exceptions
-      VpcId: !Ref Vpc
-      SecurityGroupEgress:
-        - CidrIp: 172.16.0.0/24
-          Description: Allow all outbound traffic
-          IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-      Tags:
-        - Key: Name
-          Value: TheHive Security Group
-
+  # EC2 Instances
   TheHiveEC2Instance:
     Type: AWS::EC2::Instance
     Properties:
@@ -302,38 +302,6 @@ Resources:
             - RegionMap
             - !Ref AWS::Region
             - AMI
-
-  TheHiveSecurityGroup:
-    Type:  AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Firewall exceptions
-      VpcId: !Ref Vpc
-      SecurityGroupIngress:
-        - SourceSecurityGroupId:
-            Fn::GetAtt:
-            - ALBSecurityGroup
-            - GroupId
-          Description: TheHive Port With ALB
-          IpProtocol: tcp
-          FromPort: 9000
-          ToPort: 9000
-        - SourceSecurityGroupId:
-            Fn::GetAtt:
-            - eiceSecurityGroup
-            - GroupId
-          Description: TheHive Port With ALB
-          IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-      SecurityGroupEgress:
-        - CidrIp: 0.0.0.0/0
-          Description: Allow all outbound traffic
-          IpProtocol: -1
-          FromPort: -1
-          ToPort: -1
-      Tags:
-        - Key: Name
-          Value: TheHive Security Group
 
   CortexEC2Instance:
       Type: AWS::EC2::Instance
@@ -362,38 +330,6 @@ Resources:
               - !Ref AWS::Region
               - AMI
 
-  CortexSecurityGroup:
-    Type:  AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Firewall exceptions
-      VpcId: !Ref Vpc
-      SecurityGroupIngress:
-        - SourceSecurityGroupId:
-            Fn::GetAtt:
-            - TheHiveSecurityGroup
-            - GroupId
-          Description: Cortex Port With TheHive
-          IpProtocol: tcp
-          FromPort: 9001
-          ToPort: 9001
-        - SourceSecurityGroupId:
-            Fn::GetAtt:
-            - eiceSecurityGroup
-            - GroupId
-          Description: TheHive Port With ALB
-          IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-      SecurityGroupEgress:
-        - CidrIp: 0.0.0.0/0
-          Description: Allow all outbound traffic
-          IpProtocol: -1
-          FromPort: -1
-          ToPort: -1
-      Tags:
-        - Key: Name
-          Value: Cortex Security Group
-
   PatrowlEC2Instance:
     Type: AWS::EC2::Instance
     Properties:
@@ -420,46 +356,6 @@ Resources:
             - RegionMap
             - !Ref AWS::Region
             - AMI
-
-  PatrowlSecurityGroup:
-    Type:  AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Firewall exceptions
-      VpcId: !Ref Vpc
-      SecurityGroupIngress:
-        - SourceSecurityGroupId:
-            Fn::GetAtt:
-            - ALBSecurityGroup
-            - GroupId
-          Description: Patrowl Port With ALB
-          IpProtocol: tcp
-          FromPort: 8083
-          ToPort: 8083
-        - SourceSecurityGroupId:
-            Fn::GetAtt:
-            - TheHiveSecurityGroup
-            - GroupId
-          Description: Patrowl Port With TheHive
-          IpProtocol: tcp
-          FromPort: 8083
-          ToPort: 8083
-        - SourceSecurityGroupId:
-            Fn::GetAtt:
-            - eiceSecurityGroup
-            - GroupId
-          Description: TheHive Port With ALB
-          IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-      SecurityGroupEgress:
-        - CidrIp: 0.0.0.0/0
-          Description: Allow all outbound traffic
-          IpProtocol: -1
-          FromPort: -1
-          ToPort: -1
-      Tags:
-        - Key: Name
-          Value: Patrowl Security Group
 
   CuckooEC2Instance:
     Type: AWS::EC2::Instance
@@ -488,38 +384,6 @@ Resources:
             - !Ref AWS::Region
             - AMI
 
-  CuckooSecurityGroup:
-    Type:  AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Firewall exceptions
-      VpcId: !Ref Vpc
-      SecurityGroupIngress:
-        - SourceSecurityGroupId:
-            Fn::GetAtt:
-            - CortexSecurityGroup
-            - GroupId
-          Description: Cuckoo Port With Cortex
-          IpProtocol: tcp
-          FromPort: 8001
-          ToPort: 8001
-        - SourceSecurityGroupId:
-            Fn::GetAtt:
-            - eiceSecurityGroup
-            - GroupId
-          Description: TheHive Port With ALB
-          IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-      SecurityGroupEgress:
-        - CidrIp: 0.0.0.0/0
-          Description: Allow all outbound traffic
-          IpProtocol: -1
-          FromPort: -1
-          ToPort: -1
-      Tags:
-        - Key: Name
-          Value: Cuckoo Security Group
-
   MispEC2Instance:
     Type: AWS::EC2::Instance
     Properties:
@@ -546,46 +410,6 @@ Resources:
             - RegionMap
             - !Ref AWS::Region
             - AMI
-
-  MispSecurityGroup:
-    Type:  AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Firewall exceptions
-      VpcId: !Ref Vpc
-      SecurityGroupIngress:
-        - SourceSecurityGroupId:
-            Fn::GetAtt:
-            - CortexSecurityGroup
-            - GroupId
-          Description: Misp Port With TheHive
-          IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-        - SourceSecurityGroupId:
-            Fn::GetAtt:
-            - TheHiveSecurityGroup
-            - GroupId
-          Description: Misp Port With Cortex
-          IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-        - SourceSecurityGroupId:
-            Fn::GetAtt:
-            - eiceSecurityGroup
-            - GroupId
-          Description: TheHive Port With ALB
-          IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-      SecurityGroupEgress:
-        - CidrIp: 0.0.0.0/0
-          Description: Allow all outbound traffic
-          IpProtocol: -1
-          FromPort: -1
-          ToPort: -1
-      Tags:
-        - Key: Name
-          Value: Misp Security Group
 
   DBEC2Instance:
       Type: AWS::EC2::Instance
@@ -614,67 +438,7 @@ Resources:
               - !Ref AWS::Region
               - AMI
 
-  DBSecurityGroup:
-    Type:  AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Firewall exceptions
-      VpcId: !Ref Vpc
-      SecurityGroupIngress:
-        - SourceSecurityGroupId:
-            Fn::GetAtt:
-            - TheHiveSecurityGroup
-            - GroupId
-          Description: ElasticSearch Port With TheHive
-          IpProtocol: tcp
-          FromPort: 9200
-          ToPort: 9200
-        - SourceSecurityGroupId:
-            Fn::GetAtt:
-            - CortexSecurityGroup
-            - GroupId
-          Description: ElasticSearch Port With Cortex
-          IpProtocol: tcp
-          FromPort: 9200
-          ToPort: 9200
-        - SourceSecurityGroupId:
-            Fn::GetAtt:
-            - eiceSecurityGroup
-            - GroupId
-          Description: TheHive Port With ALB
-          IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-      SecurityGroupEgress:
-        - CidrIp: 0.0.0.0/0
-          Description: Allow all outbound traffic
-          IpProtocol: -1
-          FromPort: -1
-          ToPort: -1
-      Tags:
-        - Key: Name
-          Value: ElasticSearch Security Group
-
-  ALBSecurityGroup:
-    Type:  AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Firewall exceptions
-      VpcId: !Ref Vpc
-      SecurityGroupIngress:
-        - CidrIp: 0.0.0.0/0
-          Description: ALB Port TheHive
-          IpProtocol: tcp
-          FromPort: 9000
-          ToPort: 9000
-      SecurityGroupEgress:
-        - CidrIp: 0.0.0.0/0
-          Description: Allow all outbound traffic
-          IpProtocol: -1
-          FromPort: -1
-          ToPort: -1
-      Tags:
-        - Key: Name
-          Value: ALB Security Group
-
+  # ALB configuration
   EC2TargetGroupTheHive:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -731,16 +495,270 @@ Resources:
       Port: 8083
       Protocol: HTTP
 
-  ApplicationLoadBalancer:
-    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+  # Security Groups
+  eiceSecurityGroup:
+    Type:  AWS::EC2::SecurityGroup
     Properties:
-      Scheme: internet-facing
-      Subnets:
-      - !Ref PublicSubnetAcc
-      - !Ref PublicSubnetMgm
-      SecurityGroups:
-        - !GetAtt ALBSecurityGroup.GroupId
+      GroupDescription: Firewall exceptions
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - CidrIp: 172.16.0.0/24
+          Description: Allow all outbound traffic
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+      Tags:
+        - Key: Name
+          Value: TheHive Security Group
 
+  TheHiveSecurityGroup:
+    Type:  AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Firewall exceptions
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - ALBSecurityGroup
+            - GroupId
+          Description: TheHive Port With ALB
+          IpProtocol: tcp
+          FromPort: 9000
+          ToPort: 9000
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - eiceSecurityGroup
+            - GroupId
+          Description: TheHive Port With ALB
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+          IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+      Tags:
+        - Key: Name
+          Value: TheHive Security Group
+
+  CortexSecurityGroup:
+    Type:  AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Firewall exceptions
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - TheHiveSecurityGroup
+            - GroupId
+          Description: Cortex Port With TheHive
+          IpProtocol: tcp
+          FromPort: 9001
+          ToPort: 9001
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - eiceSecurityGroup
+            - GroupId
+          Description: TheHive Port With ALB
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+          IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+      Tags:
+        - Key: Name
+          Value: Cortex Security Group
+
+  PatrowlSecurityGroup:
+    Type:  AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Firewall exceptions
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - ALBSecurityGroup
+            - GroupId
+          Description: Patrowl Port With ALB
+          IpProtocol: tcp
+          FromPort: 8083
+          ToPort: 8083
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - TheHiveSecurityGroup
+            - GroupId
+          Description: Patrowl Port With TheHive
+          IpProtocol: tcp
+          FromPort: 8083
+          ToPort: 8083
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - eiceSecurityGroup
+            - GroupId
+          Description: TheHive Port With ALB
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+          IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+      Tags:
+        - Key: Name
+          Value: Patrowl Security Group
+
+  CuckooSecurityGroup:
+    Type:  AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Firewall exceptions
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - CortexSecurityGroup
+            - GroupId
+          Description: Cuckoo Port With Cortex
+          IpProtocol: tcp
+          FromPort: 8001
+          ToPort: 8001
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - eiceSecurityGroup
+            - GroupId
+          Description: TheHive Port With ALB
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+          IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+      Tags:
+        - Key: Name
+          Value: Cuckoo Security Group
+
+  MispSecurityGroup:
+    Type:  AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Firewall exceptions
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - CortexSecurityGroup
+            - GroupId
+          Description: Misp Port With TheHive
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - TheHiveSecurityGroup
+            - GroupId
+          Description: Misp Port With Cortex
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - eiceSecurityGroup
+            - GroupId
+          Description: TheHive Port With ALB
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+          IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+      Tags:
+        - Key: Name
+          Value: Misp Security Group
+
+  DBSecurityGroup:
+    Type:  AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Firewall exceptions
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - TheHiveSecurityGroup
+            - GroupId
+          Description: ElasticSearch Port With TheHive
+          IpProtocol: tcp
+          FromPort: 9200
+          ToPort: 9200
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - CortexSecurityGroup
+            - GroupId
+          Description: ElasticSearch Port With Cortex
+          IpProtocol: tcp
+          FromPort: 9200
+          ToPort: 9200
+        - SourceSecurityGroupId:
+            Fn::GetAtt:
+            - eiceSecurityGroup
+            - GroupId
+          Description: TheHive Port With ALB
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+          IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+      Tags:
+        - Key: Name
+          Value: ElasticSearch Security Group
+
+  ALBSecurityGroup:
+    Type:  AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Firewall exceptions
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all inbound traffic for TheHive
+          IpProtocol: tcp
+          FromPort: 9000
+          ToPort: 9000
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all inbound traffic for Patrowl
+          IpProtocol: tcp
+          FromPort: 8083
+          ToPort: 8083
+      SecurityGroupEgress:
+        - CidrIp: 172.16.0.32/28
+          Description: ALB Port With TheHive
+          IpProtocol: tcp
+          FromPort: 9000
+          ToPort: 9000
+        - CidrIp: 172.16.0.64/28
+          Description: ALB Port With Patrowl
+          IpProtocol: tcp
+          FromPort: 8083
+          ToPort: 8083
+      Tags:
+        - Key: Name
+          Value: ALB Security Group
+
+# Outputs
 Outputs:
   ALBDNSName:
     Description: ALB DNS name

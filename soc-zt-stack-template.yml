@@ -54,7 +54,7 @@ Parameters:
 
   NatGateway:
     Type: String
-    Description: Nat Gateway for allow internet access to private networks
+    Description: NAT Gateway for allow internet access to private networks
     Default: true
     AllowedValues:
       - true
@@ -427,6 +427,15 @@ Resources:
             !Sub |
               #!/bin/bash
               yum update -y
+              # Installing ElasticSearch
+              sudo rpm --import https://artifacts.elastic.co/GPG-KEY-elasticsearch
+              cd ~/
+              wget https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.17.18-x86_64.rpm
+              sudo rpm --install elasticsearch-7.17.18-x86_64.rpm
+              # Starting the service
+              sudo systemctl daemon-reload
+              sudo systemctl enable elasticsearch
+              sudo systemctl start elasticsearch
         Tags:
           - Key: Name
             Value: ElasticSearch
@@ -456,6 +465,8 @@ Resources:
         Value: '20'
       UnhealthyThresholdCount: 3
       VpcId: !Ref Vpc
+      Targets:
+        - Id: !Ref TheHiveEC2Instance
 
   EC2TargetGroupPatrowl:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -474,6 +485,8 @@ Resources:
         Value: '20'
       UnhealthyThresholdCount: 3
       VpcId: !Ref Vpc
+      Targets:
+        - Id: !Ref PatrowlEC2Instance
 
   ALBListenerThehive:
     Type: AWS::ElasticLoadBalancingV2::Listener
